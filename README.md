@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/rishavkr206/boardify/actions/workflows/ci.yml/badge.svg)](https://github.com/rishavkr206/boardify/actions)
 
-**Live demo:** [boardify.up.railway.app](https://boardify.up.railway.app) · **Demo board:** [/board/my-startup](https://boardify.up.railway.app/board/my-startup)
+**Live demo:** [boardify-plum.vercel.app](https://boardify-plum.vercel.app) · **Demo board:** [/board/my-startup](https://boardify-plum.vercel.app/board/my-startup) · **API:** [boardify-api-soci.onrender.com/health](https://boardify-api-soci.onrender.com/health)
 
 ---
 
@@ -32,8 +32,8 @@ Boardify lets teams create public feedback boards where users can submit feature
 | Database | PostgreSQL 16 (via Prisma ORM) |
 | Auth | JWT (access tokens 15m) + Refresh tokens (7d, DB-stored) |
 | Frontend | React 18, Vite, Tailwind CSS, Recharts |
-| DevOps | Docker, docker-compose, GitHub Actions |
-| Deploy | Railway (backend + DB), Vercel (frontend) |
+| DevOps | Docker, docker-compose, GitHub Actions CI |
+| Deploy | Render (backend + DB), Vercel (frontend) |
 
 ---
 
@@ -44,18 +44,21 @@ Boardify lets teams create public feedback boards where users can submit feature
 │                      Frontend (React)                    │
 │  Landing · Dashboard · Public Board · Analytics          │
 │  Axios client with auto refresh-token interceptor        │
+│  Deployed on Vercel                                      │
 └────────────────────────┬─────────────────────────────────┘
-                         │ REST API
+                         │ REST API (HTTPS)
 ┌────────────────────────▼─────────────────────────────────┐
 │                   Backend (Express)                      │
 │  /api/auth  /api/boards  /api/posts  /api/analytics      │
 │  Rate limiting · Helmet · CORS · express-validator       │
+│  Deployed on Render (Node web service)                   │
 └────────────────────────┬─────────────────────────────────┘
                          │ Prisma ORM
 ┌────────────────────────▼─────────────────────────────────┐
 │               PostgreSQL (multi-tenant schema)           │
 │  users · boards · posts · upvotes · comments             │
 │  refresh_tokens (for token rotation)                     │
+│  Hosted on Render PostgreSQL (free tier)                 │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -119,8 +122,8 @@ Notable design decisions:
 
 ### Prerequisites
 - Node.js 20+
-- Docker & docker-compose (for PostgreSQL)
-- pnpm or npm
+- Docker Desktop (for PostgreSQL container)
+- npm
 
 ### Quick start
 
@@ -129,16 +132,16 @@ Notable design decisions:
 git clone https://github.com/rishavkr206/boardify.git
 cd boardify
 
-# 2. Start PostgreSQL
-docker-compose up postgres -d
+# 2. Start PostgreSQL in Docker
+docker compose up postgres -d
 
 # 3. Setup backend
 cd backend
-cp .env.example .env
-# Edit .env — generate secrets with:
+copy .env.example .env
+# Edit .env — generate JWT secrets with:
 # node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 npm install
-npx prisma migrate dev
+npx prisma migrate dev --name init --schema src/prisma/schema.prisma
 npm run db:seed
 
 # 4. Start backend
@@ -154,28 +157,54 @@ Open [http://localhost:5173](http://localhost:5173)
 
 **Seed credentials:** `demo@boardify.dev` / `Password123`
 
+> **Note:** On Windows, stop the local PostgreSQL service (`postgresql-x64-16` in services.msc) before running Docker to avoid port 5432 conflicts.
+
 ---
 
 ## Deployment
 
-### Backend → Railway
+### Database → Render PostgreSQL
 
-1. Create a Railway project, add a PostgreSQL service
-2. Add the backend as a service pointing to `./backend`
-3. Set environment variables from `.env.example`
-4. Railway auto-detects Node.js and runs `npm start`
+1. Create a new PostgreSQL instance on [Render](https://render.com) (free tier)
+2. Set name `boardify-db`, version PostgreSQL 16
+3. Copy the **Internal Database URL** — used as `DATABASE_URL` in the backend
+
+### Backend → Render (Web Service)
+
+1. Create a new Web Service on Render, connect the `boardify` GitHub repo
+2. Set **Root Directory** to `backend`, **Language** to `Node`
+3. **Build Command:**
+   ```
+   npm install && npx prisma generate --schema src/prisma/schema.prisma && npx prisma migrate deploy --schema src/prisma/schema.prisma
+   ```
+4. **Start Command:** `node src/index.js`
+5. **Health Check Path:** `/health`
+6. Add environment variables:
+
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | Internal Database URL from Render PostgreSQL |
+| `JWT_SECRET` | Random 64-byte hex string |
+| `JWT_REFRESH_SECRET` | Random 64-byte hex string |
+| `NODE_ENV` | `production` |
+| `PORT` | `3001` |
+| `FRONTEND_URL` | Your Vercel frontend URL |
 
 ### Frontend → Vercel
 
-1. Import repo into Vercel, set root to `./frontend`
-2. Add env var: `VITE_API_URL=https://your-railway-backend.up.railway.app`
-3. Deploy
+1. Import `boardify` repo into [Vercel](https://vercel.com)
+2. Set **Root Directory** to `frontend`
+3. Add env var: `VITE_API_URL=https://your-render-backend.onrender.com`
+4. Deploy
 
-### Docker (self-hosted)
+### Docker (local development)
 
 ```bash
-# Build and run the full stack
-docker-compose up --build
+# Start only PostgreSQL via Docker (recommended for local dev)
+docker compose up postgres -d
+
+# Or run the full stack
+docker compose up --build
 ```
 
 ---
@@ -185,20 +214,21 @@ docker-compose up --build
 ```
 boardify/
 ├── backend/
-│   └── src/
-│       ├── controllers/    # Business logic
-│       ├── routes/         # Express route definitions + validation
-│       ├── middleware/      # Auth, error handling, validation
-│       ├── utils/          # JWT helpers, response helpers
-│       └── prisma/         # Schema + seed
+│   ├── src/
+│   │   ├── controllers/    # Business logic
+│   │   ├── routes/         # Express route definitions + validation
+│   │   ├── middleware/     # Auth, error handling, validation
+│   │   ├── utils/          # JWT helpers, response helpers
+│   │   └── prisma/         # Schema, migrations, seed
+│   └── Dockerfile
 ├── frontend/
 │   └── src/
 │       ├── api/            # Axios client + endpoint modules
 │       ├── context/        # AuthContext (React)
 │       ├── pages/          # Route-level components
 │       └── components/     # Reusable UI components
-├── .github/workflows/      # GitHub Actions CI
-└── docker-compose.yml
+├── .github/workflows/      # GitHub Actions CI pipeline
+└── docker-compose.yml      # Local development setup
 ```
 
 ---
