@@ -45,13 +45,13 @@ jobs:
         working-directory: ./backend
         env:
           DATABASE_URL: postgresql://postgres:testpass@localhost:5432/boardify_test
-        run: npx prisma generate
+        run: npx prisma generate --schema src/prisma/schema.prisma
 
       - name: Run DB migrations
         working-directory: ./backend
         env:
           DATABASE_URL: postgresql://postgres:testpass@localhost:5432/boardify_test
-        run: npx prisma migrate deploy
+        run: npx prisma migrate deploy --schema src/prisma/schema.prisma
 
       - name: Lint backend
         working-directory: ./backend
