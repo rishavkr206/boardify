@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  boards   Board[]
+  posts    Post[]
+  upvotes  Upvote[]
+  comments Comment[]
+
+  @@map("users")
+}
+
+model Board {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String?
+  isPublic    Boolean  @default(true)
+  accentColor String   @default("#6366f1")
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  posts Post[]
+
+  @@map("boards")
+}
+
+enum PostStatus {
+  OPEN
+  UNDER_REVIEW
+  PLANNED
+  IN_PROGRESS
+  DONE
+  DECLINED
+}
+
+model Post {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  status      PostStatus @default(OPEN)
+  category    String?
+  boardId     String
+  authorId    String?
+  authorName  String?
+  authorEmail String?
+  upvoteCount Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  board    Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  upvotes  Upvote[]
+  comments Comment[]
+
+  @@index([boardId])
+  @@index([status])
+  @@map("posts")
+}
+
+model Upvote {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String?
+  voterIp   String?
+  createdAt DateTime @default(now())
+
+  post Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@map("upvotes")
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  content     String
+  postId      String
+  authorId    String?
+  authorName  String?
+  authorEmail String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  post   Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([postId])
+  @@map("comments")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
